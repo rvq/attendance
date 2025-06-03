@@ -1,3 +1,4 @@
 pandas>=2.2
 streamlit>=1.33
 openpyxl>=3.1
+holidays>=0.25
