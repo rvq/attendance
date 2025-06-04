@@ -12,12 +12,19 @@ import holidays  # Estonia national holidays
 DAILY_EXPECTED_HOURS = 8.0  # tweak if a full work-day ≠ 8 h
 EE_HOLIDAYS = holidays.EE()  # public holidays for every year
 
+# Any Event values that should count as paid leave / absence.
+ABSENCE_KEYWORDS = {
+    "vacation",
+    "annual leave",
+    "long service award",  # added keyword
+}
+
 ###############################################################################
 # Helper functions
 ###############################################################################
 
 def working_days_in_month(year: int, month: int) -> int:
-    """Mon–Fri days in *this* month, excluding public holidays."""
+    """Return count of Mon–Fri days in the month minus public holidays."""
     cal = calendar.Calendar()
     return sum(
         1
@@ -30,44 +37,43 @@ def working_days_in_month(year: int, month: int) -> int:
 ###############################################################################
 
 def process_attendance(df: pd.DataFrame):
-    """Return all attendance & hour metrics.
+    """Compute attendance & hour metrics from the raw DataFrame.
 
-    Required columns (exact case):
+    Required columns (exact names):
       • Employee name
       • Attendance date                 (dd.mm.yyyy)
       • Total time worked decimal value (float hours, blanks ok)
-      • Event                            ("Vacation" marks annual leave)
+      • Event                            (absence reason)
     """
 
     df = df.copy()
     df["Attendance date"] = pd.to_datetime(df["Attendance date"], format="%d.%m.%Y")
 
-    # Hours & presence
+    # Hours & presence flag --------------------------------------------------
     df["HoursWorked"] = pd.to_numeric(df["Total time worked decimal value"], errors="coerce").fillna(0.0)
     df["Present"] = df["HoursWorked"] > 0
 
-    # Vacation flag (case-insensitive)
-    df["Vacation"] = df["Event"].fillna("").str.strip().str.lower() == "vacation"
+    # Absence detection ------------------------------------------------------
+    df["EventNorm"] = df["Event"].fillna("").str.strip().str.lower()
+    df["Vacation"] = df["EventNorm"].isin(ABSENCE_KEYWORDS)
 
-    # Remove weekends & public holidays (vacations stay for counting)
+    # Exclude weekends and public holidays (absences remain for counting) ----
     df = df[df["Attendance date"].dt.dayofweek < 5]
     df = df[~df["Attendance date"].dt.date.isin(EE_HOLIDAYS)]
 
-    # Focus on latest month in sheet
-    latest_date = df["Attendance date"].max()
-    year, month = latest_date.year, latest_date.month
+    # Reporting month --------------------------------------------------------
+    latest = df["Attendance date"].max()
+    year, month = latest.year, latest.month
     ym_period = pd.Period(datetime(year, month, 1), "M")
 
     working_days_month = working_days_in_month(year, month)
 
-    month_mask = (
-        (df["Attendance date"].dt.year == year) & (df["Attendance date"].dt.month == month)
-    )
+    month_mask = (df["Attendance date"].dt.year == year) & (df["Attendance date"].dt.month == month)
     df_month = df[month_mask]
 
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # PER-PERSON · MONTH
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     vac_days_month = df_month.groupby("Employee name")["Vacation"].sum().rename("VacationDays")
 
     person_month = (
@@ -82,13 +88,15 @@ def process_attendance(df: pd.DataFrame):
     person_month["PctOfWorkingDays"] = (person_month["DaysInOffice"] / person_month["ExpectedDays"].replace(0, pd.NA)).round(2)
     person_month["PctOfHours"] = (person_month["ActualHours"] / person_month["ExpectedHours"].replace(0, pd.NA)).round(2)
 
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # PER-PERSON · WEEK
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
 
-    week_working_days = df.groupby("ISOWeek")["Attendance date"].nunique().rename("WorkingDays").reset_index()
-    week_working_days["ExpectedHours"] = week_working_days["WorkingDays"] * DAILY_EXPECTED_HOURS
+    week_working_days = (
+        df.groupby("ISOWeek")["Attendance date"].nunique().rename("WorkingDays").reset_index()
+    )
+    week_working_days["ExpectedHoursWeek"] = week_working_days["WorkingDays"] * DAILY_EXPECTED_HOURS
 
     vac_days_week = df.groupby(["ISOWeek", "Employee name"])["Vacation"].sum().rename("VacationDays")
 
@@ -105,10 +113,10 @@ def process_attendance(df: pd.DataFrame):
     person_week["PctOfWorkingDays"] = (person_week["DaysInOffice"] / person_week["ExpectedDays"].replace(0, pd.NA)).round(2)
     person_week["PctOfHours"] = (person_week["ActualHours"] / person_week["ExpectedHours"].replace(0, pd.NA)).round(2)
 
-    # ------------------------------------------------------------------
-    # TEAM-LEVEL METRICS
-    # ------------------------------------------------------------------
-    team_size_total = df["Employee name"].nunique()
+    # ----------------------------------------------------------------------
+    # TEAM-LEVEL · WEEK & MONTH
+    # ----------------------------------------------------------------------
+    team_size = df["Employee name"].nunique()
 
     vac_persondays_week = df.groupby("ISOWeek")["Vacation"].sum().rename("VacationPersonDays")
 
@@ -120,14 +128,14 @@ def process_attendance(df: pd.DataFrame):
         .join(vac_persondays_week, on="ISOWeek")
         .fillna({"VacationPersonDays": 0})
     )
-    team_week["ExpectedPersonDays"] = team_week["WorkingDays"] * team_size_total - team_week["VacationPersonDays"]
+    team_week["ExpectedPersonDays"] = team_week["WorkingDays"] * team_size - team_week["VacationPersonDays"]
     team_week["ExpectedTeamHours"] = team_week["ExpectedPersonDays"] * DAILY_EXPECTED_HOURS
     team_week["TeamPresencePct"] = (team_week["PersonDays"] / team_week["ExpectedPersonDays"].replace(0, pd.NA)).round(2)
     team_week["TeamHoursPct"] = (team_week["ActualTeamHours"] / team_week["ExpectedTeamHours"].replace(0, pd.NA)).round(2)
 
     total_vac_persondays_month = df_month["Vacation"].sum()
     actual_team_hours_month = df_month["HoursWorked"].sum()
-    expected_persondays_month = working_days_month * team_size_total - total_vac_persondays_month
+    expected_persondays_month = working_days_month * team_size - total_vac_persondays_month
     expected_team_hours_month = expected_persondays_month * DAILY_EXPECTED_HOURS
     team_presence_pct_month = df_month["Present"].sum() / expected_persondays_month if expected_persondays_month else pd.NA
 
@@ -135,7 +143,7 @@ def process_attendance(df: pd.DataFrame):
         "YearMonth": [str(ym_period)],
         "PersonDays": [df_month["Present"].sum()],
         "ExpectedPersonDays": [expected_persondays_month],
-        "TeamSizeTotal": [team_size_total],
+        "TeamSize": [team_size],
         "VacationPersonDays": [total_vac_persondays_month],
         "TeamPresencePct": [round(team_presence_pct_month, 2) if pd.notna(team_presence_pct_month) else pd.NA],
         "ActualTeamHours": [actual_team_hours_month],
@@ -146,7 +154,7 @@ def process_attendance(df: pd.DataFrame):
     summary_df = pd.DataFrame({
         "Month": [ym_period.strftime("%B %Y")],
         "Working Days": [working_days_month],
-        "Team Size (unique)": [team_size_total],
+        "Team Size": [team_size],
         "Vacation Person-Days": [total_vac_persondays_month],
         "Team Presence %": [team_month_df["TeamPresencePct"].iloc[0]],
         "Team Hours %": [team_month_df["TeamHoursPct"].iloc[0]],
@@ -169,12 +177,17 @@ def main():
 
     df = pd.read_excel(BytesIO(uploaded_file.read()))
 
+    # Optionally expose raw event counts for debugging
+    if st.checkbox("Show zero-hour Event counts"):
+        st.write(df[df["Total time worked decimal value"].fillna(0) == 0]["Event"].value_counts(dropna=False).head(20))
+
     try:
         summary_df, person_month, person_week, team_week, team_month_df = process_attendance(df)
     except Exception as e:
         st.error(f"❌ Failed to process file: {e}")
         st.stop()
 
+    # ---------------------------- Outputs -----------------------------------
     st.subheader("Monthly Summary")
     st.dataframe(summary_df, hide_index=True)
 
@@ -192,14 +205,4 @@ def main():
     st.subheader("Team Presence & Hours (Week)")
     st.dataframe(team_week, hide_index=True)
 
-    csv_bytes = summary_df.to_csv(index=False).encode()
-    st.download_button(
-        "Download Monthly Summary (CSV)",
-        data=csv_bytes,
-        file_name="attendance_summary.csv",
-        mime="text/csv",
-    )
-
-
-if __name__ == "__main__":
-    main()
+    csv_bytes = summary_df
