@@ -9,7 +9,7 @@ import holidays  # Estonia national holidays
 # CONFIG
 ###############################################################################
 
-DAILY_EXPECTED_HOURS = 8.0  # tweak if a full work-day ≠ 8 h
+DAILY_EXPECTED_HOURS = 8.0  # tweak if a full work‑day ≠ 8 h
 EE_HOLIDAYS = holidays.EE()  # public holidays for every year
 
 # Any Event values that should count as paid leave / absence.
@@ -72,7 +72,7 @@ def process_attendance(df: pd.DataFrame):
     df_month = df[month_mask]
 
     # ----------------------------------------------------------------------
-    # PER-PERSON · MONTH
+    # PER‑PERSON · MONTH
     # ----------------------------------------------------------------------
     vac_days_month = df_month.groupby("Employee name")["Vacation"].sum().rename("VacationDays")
 
@@ -89,7 +89,7 @@ def process_attendance(df: pd.DataFrame):
     person_month["PctOfHours"] = (person_month["ActualHours"] / person_month["ExpectedHours"].replace(0, pd.NA)).round(2)
 
     # ----------------------------------------------------------------------
-    # PER-PERSON · WEEK
+    # PER‑PERSON · WEEK
     # ----------------------------------------------------------------------
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
 
@@ -114,7 +114,7 @@ def process_attendance(df: pd.DataFrame):
     person_week["PctOfHours"] = (person_week["ActualHours"] / person_week["ExpectedHours"].replace(0, pd.NA)).round(2)
 
     # ----------------------------------------------------------------------
-    # TEAM-LEVEL · WEEK & MONTH
+    # TEAM‑LEVEL · WEEK & MONTH
     # ----------------------------------------------------------------------
     team_size = df["Employee name"].nunique()
 
@@ -155,7 +155,7 @@ def process_attendance(df: pd.DataFrame):
         "Month": [ym_period.strftime("%B %Y")],
         "Working Days": [working_days_month],
         "Team Size": [team_size],
-        "Vacation Person-Days": [total_vac_persondays_month],
+        "Vacation Person‑Days": [total_vac_persondays_month],
         "Team Presence %": [team_month_df["TeamPresencePct"].iloc[0]],
         "Team Hours %": [team_month_df["TeamHoursPct"].iloc[0]],
     })
@@ -178,7 +178,7 @@ def main():
     df = pd.read_excel(BytesIO(uploaded_file.read()))
 
     # Optionally expose raw event counts for debugging
-    if st.checkbox("Show zero-hour Event counts"):
+    if st.checkbox("Show zero‑hour Event counts"):
         st.write(df[df["Total time worked decimal value"].fillna(0) == 0]["Event"].value_counts(dropna=False).head(20))
 
     try:
@@ -193,16 +193,27 @@ def main():
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Per-Person (Month)")
+        st.subheader("Per‑Person (Month)")
         st.dataframe(person_month, hide_index=True)
     with col2:
         st.subheader("Team Presence & Hours (Month)")
         st.dataframe(team_month_df, hide_index=True)
 
-    st.subheader("Per-Person (Week)")
+    st.subheader("Per‑Person (Week)")
     st.dataframe(person_week, hide_index=True)
 
     st.subheader("Team Presence & Hours (Week)")
     st.dataframe(team_week, hide_index=True)
 
-    csv_bytes = summary_df
+        # ---------------------------- Download button ----------------------------
+    csv_bytes = summary_df.to_csv(index=False).encode()
+    st.download_button(
+        label="Download Monthly Summary (CSV)",
+        data=csv_bytes,
+        file_name="attendance_summary.csv",
+        mime="text/csv",
+    )
+
+
+if __name__ == "__main__":
+    main()
