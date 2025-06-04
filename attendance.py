@@ -9,7 +9,7 @@ import holidays  # Estonia national holidays
 # CONFIG
 ###############################################################################
 
-DAILY_EXPECTED_HOURS = 8.0  # tweak if a full work‑day ≠ 8 h
+DAILY_EXPECTED_HOURS = 8.0  # tweak if a full work-day ≠ 8 h
 EE_HOLIDAYS = holidays.EE()  # public holidays for every year
 
 # Any Event values that should count as paid leave / absence.
@@ -18,6 +18,9 @@ ABSENCE_KEYWORDS = {
     "annual leave",
     "long service award",  # added keyword
 }
+
+# Threshold below which percentages are highlighted in red
+THRESHOLD_LOW_PCT = 0.60
 
 ###############################################################################
 # Helper functions
@@ -33,7 +36,7 @@ def working_days_in_month(year: int, month: int) -> int:
     )
 
 ###############################################################################
-# Core processor
+# Core processor (unchanged)
 ###############################################################################
 
 def process_attendance(df: pd.DataFrame):
@@ -72,7 +75,7 @@ def process_attendance(df: pd.DataFrame):
     df_month = df[month_mask]
 
     # ----------------------------------------------------------------------
-    # PER‑PERSON · MONTH
+    # PER-PERSON · MONTH
     # ----------------------------------------------------------------------
     vac_days_month = df_month.groupby("Employee name")["Vacation"].sum().rename("VacationDays")
 
@@ -89,7 +92,7 @@ def process_attendance(df: pd.DataFrame):
     person_month["PctOfHours"] = (person_month["ActualHours"] / person_month["ExpectedHours"].replace(0, pd.NA)).round(2)
 
     # ----------------------------------------------------------------------
-    # PER‑PERSON · WEEK
+    # PER-PERSON · WEEK
     # ----------------------------------------------------------------------
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
 
@@ -114,7 +117,7 @@ def process_attendance(df: pd.DataFrame):
     person_week["PctOfHours"] = (person_week["ActualHours"] / person_week["ExpectedHours"].replace(0, pd.NA)).round(2)
 
     # ----------------------------------------------------------------------
-    # TEAM‑LEVEL · WEEK & MONTH
+    # TEAM-LEVEL · WEEK & MONTH
     # ----------------------------------------------------------------------
     team_size = df["Employee name"].nunique()
 
@@ -155,12 +158,34 @@ def process_attendance(df: pd.DataFrame):
         "Month": [ym_period.strftime("%B %Y")],
         "Working Days": [working_days_month],
         "Team Size": [team_size],
-        "Vacation Person‑Days": [total_vac_persondays_month],
+        "Vacation Person-Days": [total_vac_persondays_month],
         "Team Presence %": [team_month_df["TeamPresencePct"].iloc[0]],
         "Team Hours %": [team_month_df["TeamHoursPct"].iloc[0]],
     })
 
     return summary_df, person_month, person_week, team_week, team_month_df
+
+###############################################################################
+# Styling helper
+###############################################################################
+
+def style_attendance(df: pd.DataFrame, percent_cols: list[str]):
+    """Return a Styler with percentage formatting and red text < 60%."""
+    # Format columns as whole percentages (e.g. 75%)
+    formatter = {col: "{:.0%}" for col in percent_cols}
+
+    # Highlight low percentages
+    def highlight_low(v):
+        if pd.notna(v) and v < THRESHOLD_LOW_PCT:
+            return "color: red;"
+        return ""
+
+    return (
+        df.style
+        .format(formatter)
+        .applymap(highlight_low, subset=percent_cols)
+        .hide(axis="index")
+    )
 
 ###############################################################################
 # Streamlit UI
@@ -178,7 +203,7 @@ def main():
     df = pd.read_excel(BytesIO(uploaded_file.read()))
 
     # Optionally expose raw event counts for debugging
-    if st.checkbox("Show zero‑hour Event counts"):
+    if st.checkbox("Show zero-hour Event counts"):
         st.write(df[df["Total time worked decimal value"].fillna(0) == 0]["Event"].value_counts(dropna=False).head(20))
 
     try:
@@ -189,23 +214,35 @@ def main():
 
     # ---------------------------- Outputs -----------------------------------
     st.subheader("Monthly Summary")
-    st.dataframe(summary_df, hide_index=True)
+    st.dataframe(style_attendance(summary_df, ["Team Presence %", "Team Hours %"]), use_container_width=True)
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Per‑Person (Month)")
-        st.dataframe(person_month, hide_index=True)
+        st.subheader("Per-Person (Month)")
+        st.dataframe(
+            style_attendance(person_month, ["PctOfWorkingDays", "PctOfHours"]),
+            use_container_width=True,
+        )
     with col2:
         st.subheader("Team Presence & Hours (Month)")
-        st.dataframe(team_month_df, hide_index=True)
+        st.dataframe(
+            style_attendance(team_month_df, ["TeamPresencePct", "TeamHoursPct"]),
+            use_container_width=True,
+        )
 
-    st.subheader("Per‑Person (Week)")
-    st.dataframe(person_week, hide_index=True)
+    st.subheader("Per-Person (Week)")
+    st.dataframe(
+        style_attendance(person_week, ["PctOfWorkingDays", "PctOfHours"]),
+        use_container_width=True,
+    )
 
     st.subheader("Team Presence & Hours (Week)")
-    st.dataframe(team_week, hide_index=True)
+    st.dataframe(
+        style_attendance(team_week, ["TeamPresencePct", "TeamHoursPct"]),
+        use_container_width=True,
+    )
 
-        # ---------------------------- Download button ----------------------------
+    # ---------------------------- Download button ----------------------------
     csv_bytes = summary_df.to_csv(index=False).encode()
     st.download_button(
         label="Download Monthly Summary (CSV)",
