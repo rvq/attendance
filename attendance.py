@@ -9,7 +9,7 @@ import holidays  # Estonia national holidays
 # CONFIG
 ###############################################################################
 
-DAILY_EXPECTED_HOURS = 8.0  # tweak if a full work-day ≠ 8 h
+DAILY_EXPECTED_HOURS = 8.0  # tweak if a full work‑day ≠ 8 h
 EE_HOLIDAYS = holidays.EE()  # public holidays for every year
 
 ###############################################################################
@@ -48,7 +48,7 @@ def process_attendance(df: pd.DataFrame):
     ).fillna(0.0)
     df["Present"] = df["HoursWorked"] > 0
 
-    # Detect vacations (case-insensitive ‘Vacation’ in Event column)
+    # Detect vacations (case‑insensitive ‘Vacation’ in Event column)
     df["Vacation"] = (
         df["Event"].fillna("").str.strip().str.lower() == "vacation"
     )
@@ -63,7 +63,7 @@ def process_attendance(df: pd.DataFrame):
     ym_period = pd.Period(datetime(year, month, 1), "M")
 
     # ------------------------------------------------------------------
-    # MONTH-LEVEL CONSTANTS
+    # MONTH‑LEVEL CONSTANTS
     # ------------------------------------------------------------------
     working_days_month = working_days_in_month(year, month)
 
@@ -75,7 +75,7 @@ def process_attendance(df: pd.DataFrame):
     df_month = df[month_mask]
 
     # ------------------------------------------------------------------
-    # PER-PERSON · MONTH
+    # PER‑PERSON · MONTH
     # ------------------------------------------------------------------
     # Vacation days per person this month
     vac_days_month = (
@@ -109,7 +109,7 @@ def process_attendance(df: pd.DataFrame):
     ).round(2)
 
     # ------------------------------------------------------------------
-    # PER-PERSON · WEEK
+    # PER‑PERSON · WEEK
     # ------------------------------------------------------------------
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
 
@@ -151,7 +151,7 @@ def process_attendance(df: pd.DataFrame):
     ).round(2)
 
     # ------------------------------------------------------------------
-    # TEAM-LEVEL METRICS
+    # TEAM‑LEVEL METRICS
     # ------------------------------------------------------------------
     team_size_total = df["Employee name"].nunique()
 
@@ -163,4 +163,99 @@ def process_attendance(df: pd.DataFrame):
     team_week = (
         df.groupby("ISOWeek")
         .agg(
-            Pe
+            PersonDays=("Present", "sum"),
+            ActualTeamHours=("HoursWorked", "sum"),
+        )
+        .reset_index()
+        .merge(week_working_days, on="ISOWeek")
+        .join(vac_persondays_week, on="ISOWeek")
+        .fillna({"VacationPersonDays": 0})
+    )
+
+    team_week["ExpectedPersonDays"] = (
+        team_week["WorkingDays"] * team_size_total - team_week["VacationPersonDays"]
+    )
+    team_week["ExpectedTeamHours"] = (
+        team_week["ExpectedPersonDays"] * DAILY_EXPECTED_HOURS
+    )
+    team_week["TeamPresencePct"] = (
+        team_week["PersonDays"] / team_week["ExpectedPersonDays"].replace(0, pd.NA)
+    ).round(2)
+    team_week["TeamHoursPct"] = (
+        team_week["ActualTeamHours"] / team_week["ExpectedTeamHours"].replace(0, pd.NA)
+    ).round(2)
+
+    # ---- Monthly team presence/hours ----
+    total_vac_persondays_month = df_month["Vacation"].sum()
+    actual_team_hours_month = df_month["HoursWorked"].sum()
+
+    expected_persondays_month = (
+        working_days_month * team_size_total - total_vac_persondays_month
+    )
+    expected_team_hours_month = expected_persondays_month * DAILY_EXPECTED_HOURS
+    team_presence_pct_month = (
+        df_month["Present"].sum() / expected_persondays_month if expected_persondays_month else pd.NA
+    )
+
+    team_month_df = pd.DataFrame(
+        {
+            "YearMonth": [str(ym_period)],
+            "PersonDays": [df_month["Present"].sum()],
+            "ExpectedPersonDays": [expected_persondays_month],
+            "TeamSizeTotal": [team_size_total],
+            "VacationPersonDays": [total_vac_persondays_month],
+            "TeamPresencePct": [round(team_presence_pct_month, 2) if pd.notna(team_presence_pct_month) else pd.NA],
+            "ActualTeamHours": [actual_team_hours_month],
+            "ExpectedTeamHours": [expected_team_hours_month],
+            "TeamHoursPct": [round(actual_team_hours_month / expected_team_hours_month, 2) if expected_team_hours_month else pd.NA],
+        }
+    )
+
+    # ------------------------------------------------------------------
+    # SUMMARY SHEET (single‑row)
+    # ------------------------------------------------------------------
+    summary_df = pd.DataFrame(
+        {
+            "Month": [ym_period.strftime("%B %Y")],
+            "Working Days": [working_days_month],
+            "Public Holidays": [working_days_month - df_month["Attendance date"].nunique()],
+            "Team Size (unique)": [team_size_total],
+            "Vacation Person‑Days": [total_vac_persondays_month],
+            "Team Presence %": [team_month_df["TeamPresencePct"].iloc[0]],
+            "Team Hours %": [team_month_df["TeamHoursPct"].iloc[0]],
+        }
+    )
+
+    return summary_df, person_month, person_week, team_week, team_month_df
+
+###############################################################################
+# Streamlit UI
+###############################################################################
+
+def main():
+    st.set_page_config(page_title="Office Attendance Analyzer", layout="wide")
+    st.title("📊 Office Attendance Analyzer")
+
+    uploaded_file = st.file_uploader("Upload attendance report (.xlsx)", type=["xlsx"])
+    if uploaded_file is None:
+        st.info("👆 Drop a file here or click to select")
+        st.stop()
+
+    df = pd.read_excel(BytesIO(uploaded_file.read()))
+
+    try:
+        summary_df, person_month, person_week, team_week, team_month_df = process_attendance(df)
+    except Exception as e:
+        st.error(f"❌ Failed to process file: {e}")
+        st.stop()
+
+    st.subheader("Monthly Summary")
+    st.dataframe(summary_df, hide_index=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Per‑Person (Month)")
+        st.dataframe(person_month, hide_index=True)
+    with c2:
+        st.subheader("Team Presence & Hours (Month)")
+        st.dataframe(team_month
