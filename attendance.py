@@ -201,6 +201,11 @@ def process_attendance(raw: pd.DataFrame):
         team_week.ActualTeamHours / team_week.ExpectedTeamHours.replace(0, pd.NA), errors="coerce"
     ).round(2)
 
+    # Strip trailing .0s from int-like floats
+    for df_ in (person_month, person_week, team_week):
+        for col in df_.select_dtypes(include="float").columns:
+            df_[col] = df_[col].apply(lambda x: int(x) if x == int(x) else round(x, 2))
+
     return summary_month, person_month, person_week, team_week
 
 ###############################################################################
