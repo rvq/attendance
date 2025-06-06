@@ -202,20 +202,18 @@ def process_attendance(raw: pd.DataFrame):
         team_week.ActualTeamHours / team_week.ExpectedTeamHours.replace(0, pd.NA), errors="coerce"
     ).round(2)
 
-    def smart_round(val):
+    def smart_format(val):
         if pd.isna(val):
-            return val
-        try:
-            return int(val) if val == int(val) else round(val, 2)
-        except Exception:
-            return round(val, 2)
+            return ""
+        elif isinstance(val, float):
+            return f"{val:.2f}".rstrip("0").rstrip(".")
+        return val
 
     for df_ in (person_month, person_week, team_week, summary_month):
-        for col in df_.select_dtypes(include="float").columns:
-            df_[col] = df_[col].apply(smart_round)
+        for col in df_.select_dtypes(include="number").columns:
+            df_[col] = df_[col].apply(smart_format)
 
     return summary_month, person_month, person_week, team_week
-
 
 ###############################################################################
 # PRESENTATION HELPERS
