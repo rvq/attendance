@@ -1,5 +1,6 @@
+
 """Office Attendance Analyzer – streamlined & robust
-====================================================
+=====================================================
 A Streamlit web‑app that ingests a standard attendance export (e.g. SAP
 SuccessFactors) and produces per‑person / team metrics for both ISO weeks and
 for the current calendar month.
@@ -115,10 +116,10 @@ def process_attendance(raw: pd.DataFrame):
     person_month["ExpectedHours"] = person_month["ExpectedDays"] * DAILY_EXPECTED_HOURS
     person_month["PctWorkingDays"] = (
         person_month["DaysInOffice"] / person_month["ExpectedDays"].replace(0, pd.NA)
-    ).astype("float").round(2)
+    ).round(2)
     person_month["PctHours"] = (
         person_month["ActualHours"] / person_month["ExpectedHours"].replace(0, pd.NA)
-    ).astype("float").round(2)
+    ).round(2)
 
     team_size_month = df_month["Employee name"].nunique()
     vac_pd_month = vac_days_month.sum()
@@ -131,13 +132,13 @@ def process_attendance(raw: pd.DataFrame):
             "Team Size": [team_size_month],
             "Vacation Person‑Days": [vac_pd_month],
             "Team Presence %": [
-                (df_month["Present"].sum() / exp_pd_month if exp_pd_month else pd.NA)
+                float(df_month["Present"].sum() / exp_pd_month) if exp_pd_month else pd.NA
             ],
             "Team Hours %": [
-                (df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS) if exp_pd_month else pd.NA)
+                float(df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS)) if exp_pd_month else pd.NA
             ],
         }
-    ).astype({"Team Presence %": "float", "Team Hours %": "float"}).round(2)
+    ).round(2)
 
     df["ISOYear"] = df["Attendance date"].dt.isocalendar().year.astype(int)
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
@@ -174,10 +175,10 @@ def process_attendance(raw: pd.DataFrame):
     person_week["Year‑Week"] = person_week["ISOYear"].astype(str) + "‑W" + person_week["ISOWeek"].astype(str).str.zfill(2)
     person_week["PctWorkingDays"] = (
         person_week["DaysInOffice"] / person_week["ExpectedDays"].replace(0, pd.NA)
-    ).astype("float").round(2)
+    ).round(2)
     person_week["PctHours"] = (
         person_week["ActualHours"] / person_week["ExpectedHours"].replace(0, pd.NA)
-    ).astype("float").round(2)
+    ).round(2)
 
     vac_pd_week = vac_days_week.groupby(["ISOYear", "ISOWeek"]).sum().rename("VacPD")
 
@@ -195,10 +196,10 @@ def process_attendance(raw: pd.DataFrame):
     team_week["Year‑Week"] = team_week["ISOYear"].astype(str) + "‑W" + team_week["ISOWeek"].astype(str).str.zfill(2)
     team_week["TeamPresence%"] = (
         team_week.PersonDays / team_week.ExpectedPersonDays.replace(0, pd.NA)
-    ).astype("float").round(2)
+    ).round(2)
     team_week["TeamHours%"] = (
         team_week.ActualTeamHours / team_week.ExpectedTeamHours.replace(0, pd.NA)
-    ).astype("float").round(2)
+    ).round(2)
 
     return summary_month, person_month, person_week, team_week
 
