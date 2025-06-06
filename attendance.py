@@ -132,13 +132,13 @@ def process_attendance(raw: pd.DataFrame):
             "Team Size": [team_size_month],
             "Vacation Person‑Days": [vac_pd_month],
             "Team Presence %": [
-                float(df_month["Present"].sum() / exp_pd_month) if exp_pd_month else pd.NA
+                (df_month["Present"].sum() / exp_pd_month) if exp_pd_month else None
             ],
             "Team Hours %": [
-                float(df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS)) if exp_pd_month else pd.NA
+                (df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS)) if exp_pd_month else None
             ],
         }
-    ).round(2)
+    ).astype({"Team Presence %": "float64", "Team Hours %": "float64"}).round(2)
 
     df["ISOYear"] = df["Attendance date"].dt.isocalendar().year.astype(int)
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
