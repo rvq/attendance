@@ -125,6 +125,7 @@ def process_attendance(raw: pd.DataFrame):
     vac_pd_month = vac_days_month.sum()
     exp_pd_month = workdays_month * team_size_month - vac_pd_month
 
+
     summary_month = pd.DataFrame(
         {
             "Month": [month_label],
@@ -139,9 +140,10 @@ def process_attendance(raw: pd.DataFrame):
             ],
         }
     )
-    summary_month["Team Presence %"] = pd.to_numeric(summary_month["Team Presence %"], errors="coerce").round(2)
-    summary_month["Team Hours %"] = pd.to_numeric(summary_month["Team Hours %"], errors="coerce").round(2)
-    
+    summary_month["Team Presence %"] = pd.to_numeric(summary_month["Team Presence %"], errors="coerce").astype("float64").round(2)
+    summary_month["Team Hours %"] = pd.to_numeric(summary_month["Team Hours %"], errors="coerce").astype("float64").round(2)
+
+
     df["ISOYear"] = df["Attendance date"].dt.isocalendar().year.astype(int)
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
 
