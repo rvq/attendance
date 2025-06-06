@@ -138,7 +138,9 @@ def process_attendance(raw: pd.DataFrame):
                 (df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS)) if exp_pd_month else None
             ],
         }
-    ).astype({"Team Presence %": "float64", "Team Hours %": "float64"}).round(2)
+    )
+    summary_month["Team Presence %"] = pd.to_numeric(summary_month["Team Presence %"], errors="coerce").round(2)
+    summary_month["Team Hours %"] = pd.to_numeric(summary_month["Team Hours %"], errors="coerce").round(2)
 
     df["ISOYear"] = df["Attendance date"].dt.isocalendar().year.astype(int)
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
