@@ -131,10 +131,10 @@ def process_attendance(raw: pd.DataFrame):
         "Team Size": [team_size_month],
         "Vacation Person‑Days": [vac_pd_month],
         "Team Presence %": [
-            (df_month["Present"].sum() / exp_pd_month if exp_pd_month else pd.NA)
+            (df_month["Present"].sum() / exp_pd_month if exp_pd_month else 0.0)
         ],
         "Team Hours %": [
-            (df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS) if exp_pd_month else pd.NA)
+            (df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS) if exp_pd_month else 0.0)
         ],
     })
 
@@ -202,11 +202,20 @@ def process_attendance(raw: pd.DataFrame):
         team_week.ActualTeamHours / team_week.ExpectedTeamHours.replace(0, pd.NA), errors="coerce"
     ).round(2)
 
+    def smart_round(val):
+        if pd.isna(val):
+            return val
+        try:
+            return int(val) if val == int(val) else round(val, 2)
+        except Exception:
+            return round(val, 2)
+
     for df_ in (person_month, person_week, team_week, summary_month):
         for col in df_.select_dtypes(include="float").columns:
-            df_[col] = df_[col].apply(lambda x: int(x) if x == int(x) else round(x, 2))
+            df_[col] = df_[col].apply(smart_round)
 
     return summary_month, person_month, person_week, team_week
+
 
 ###############################################################################
 # PRESENTATION HELPERS
