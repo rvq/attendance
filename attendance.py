@@ -204,9 +204,11 @@ def process_attendance(raw: pd.DataFrame):
 
     def smart_format(val):
         if pd.isna(val):
-            return ""
-        elif isinstance(val, float):
-            return f"{val:.2f}".rstrip("0").rstrip(".")
+            return val
+        if isinstance(val, float):
+            if val.is_integer():
+                return int(val)
+            return round(val, 2)
         return val
 
     for df_ in (person_month, person_week, team_week, summary_month):
@@ -215,6 +217,8 @@ def process_attendance(raw: pd.DataFrame):
 
     return summary_month, person_month, person_week, team_week
 
+
+
 ###############################################################################
 # PRESENTATION HELPERS
 ###############################################################################
@@ -222,13 +226,15 @@ def process_attendance(raw: pd.DataFrame):
 def style_pct(df: pd.DataFrame, cols: Iterable[str]) -> pd.Styler:
     formatter = {c: "{:.0%}" for c in cols}
 
-    def red(val: float | pd.NA):  # noqa: ANN001
-        if pd.isna(val):
+    def red(val):
+        try:
+            return "color:red;" if float(val) < LOW_PCT_THRESHOLD else ""
+        except Exception:
             return ""
-        return "color:red;" if val < LOW_PCT_THRESHOLD else ""
 
     return df.style.hide(axis="index").format(formatter).applymap(red, subset=cols)
 
+    
 ###############################################################################
 # STREAMLIT APP
 ###############################################################################
