@@ -10,6 +10,7 @@ Rev 4 (finalized)
 * Displays % values in UI.
 * Red text for values <60%.
 * Compatible with all pandas versions.
+* Suppresses unnecessary trailing decimal zeros for cleaner display.
 """
 
 from __future__ import annotations
@@ -201,8 +202,7 @@ def process_attendance(raw: pd.DataFrame):
         team_week.ActualTeamHours / team_week.ExpectedTeamHours.replace(0, pd.NA), errors="coerce"
     ).round(2)
 
-    # Strip trailing .0s from int-like floats
-    for df_ in (person_month, person_week, team_week):
+    for df_ in (person_month, person_week, team_week, summary_month):
         for col in df_.select_dtypes(include="float").columns:
             df_[col] = df_[col].apply(lambda x: int(x) if x == int(x) else round(x, 2))
 
