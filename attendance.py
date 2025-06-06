@@ -116,10 +116,10 @@ def process_attendance(raw: pd.DataFrame):
     person_month["ExpectedHours"] = person_month["ExpectedDays"] * DAILY_EXPECTED_HOURS
     person_month["PctWorkingDays"] = pd.to_numeric(
         person_month["DaysInOffice"] / person_month["ExpectedDays"].replace(0, pd.NA), errors="coerce"
-    ).round(2)
+    )
     person_month["PctHours"] = pd.to_numeric(
         person_month["ActualHours"] / person_month["ExpectedHours"].replace(0, pd.NA), errors="coerce"
-    ).round(2)
+    )
 
     team_size_month = df_month["Employee name"].nunique()
     vac_pd_month = vac_days_month.sum()
@@ -137,9 +137,6 @@ def process_attendance(raw: pd.DataFrame):
             (df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS) if exp_pd_month else 0.0)
         ],
     })
-
-    summary_month["Team Presence %"] = pd.to_numeric(summary_month["Team Presence %"], errors="coerce").fillna(0.0).round(2)
-    summary_month["Team Hours %"] = pd.to_numeric(summary_month["Team Hours %"], errors="coerce").fillna(0.0).round(2)
 
     df["ISOYear"] = df["Attendance date"].dt.isocalendar().year.astype(int)
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
@@ -176,10 +173,10 @@ def process_attendance(raw: pd.DataFrame):
     person_week["Year‑Week"] = person_week["ISOYear"].astype(str) + "‑W" + person_week["ISOWeek"].astype(str).str.zfill(2)
     person_week["PctWorkingDays"] = pd.to_numeric(
         person_week["DaysInOffice"] / person_week["ExpectedDays"].replace(0, pd.NA), errors="coerce"
-    ).round(2)
+    )
     person_week["PctHours"] = pd.to_numeric(
         person_week["ActualHours"] / person_week["ExpectedHours"].replace(0, pd.NA), errors="coerce"
-    ).round(2)
+    )
 
     vac_pd_week = vac_days_week.groupby(["ISOYear", "ISOWeek"]).sum().rename("VacPD")
 
@@ -197,27 +194,12 @@ def process_attendance(raw: pd.DataFrame):
     team_week["Year‑Week"] = team_week["ISOYear"].astype(str) + "‑W" + team_week["ISOWeek"].astype(str).str.zfill(2)
     team_week["TeamPresence%"] = pd.to_numeric(
         team_week.PersonDays / team_week.ExpectedPersonDays.replace(0, pd.NA), errors="coerce"
-    ).round(2)
+    )
     team_week["TeamHours%"] = pd.to_numeric(
         team_week.ActualTeamHours / team_week.ExpectedTeamHours.replace(0, pd.NA), errors="coerce"
-    ).round(2)
+    )
 
-    def smart_format(val):
-        if pd.isna(val):
-            return val
-        if isinstance(val, float):
-            if val.is_integer():
-                return int(val)
-            return round(val, 2)
-        return val
-
-    for df_ in (person_month, person_week, team_week, summary_month):
-        for col in df_.select_dtypes(include="number").columns:
-            df_[col] = df_[col].apply(smart_format)
-
-    return summary_month, person_month, person_week, team_week
-
-
+    return summary_month.round(2), person_month.round(2), person_week.round(2), team_week.round(2)
 
 ###############################################################################
 # PRESENTATION HELPERS
@@ -234,7 +216,6 @@ def style_pct(df: pd.DataFrame, cols: Iterable[str]) -> pd.Styler:
 
     return df.style.hide(axis="index").format(formatter).applymap(red, subset=cols)
 
-    
 ###############################################################################
 # STREAMLIT APP
 ###############################################################################
