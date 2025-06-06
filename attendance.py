@@ -127,10 +127,10 @@ def process_attendance(raw: pd.DataFrame):
 
 
     summary_month["Team Presence %"] = (
-    pd.to_numeric(summary_month["Team Presence %"], errors="coerce")
-    .fillna(0.0)
-    .astype("float64")
-    .round(2)
+        pd.to_numeric(summary_month["Team Presence %"], errors="coerce")
+        .fillna(0.0)
+        .astype("float64")
+        .round(2)
     )
 
     summary_month["Team Hours %"] = (
