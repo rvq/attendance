@@ -1,14 +1,14 @@
 """Office Attendance Analyzer – streamlined & robust
 ====================================================
-A Streamlit web-app that ingests a standard attendance export (e.g. SAP
-SuccessFactors) and produces per-person / team metrics for both ISO weeks and
+A Streamlit web‑app that ingests a standard attendance export (e.g. SAP
+SuccessFactors) and produces per‑person / team metrics for both ISO weeks and
 for the current calendar month.
 
-Rev 3 (complete)
+Rev 3 (complete)
 ----------------
-* Finished `main()` (team-week table, download button, debug tab).
+* Finished `main()` (team‑week table, download button, debug tab).
 * Added full `style_pct()` helper.
-* File is now runnable end-to-end.
+* File is now runnable end‑to‑end.
 """
 from __future__ import annotations
 
@@ -24,15 +24,15 @@ try:
     import holidays  # type: ignore
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise ModuleNotFoundError(
-        "pip install holidays  – required for public-holiday look-ups"
+        "pip install holidays  – required for public‑holiday look‑ups"
     ) from exc
 
 ###############################################################################
 # CONFIGURATION
 ###############################################################################
-COUNTRY_HOLIDAYS: Final[str] = "EE"  # ISO-3166 alpha-2 – set yours here
+COUNTRY_HOLIDAYS: Final[str] = "EE"  # ISO‑3166 alpha‑2 – set yours here
 DAILY_EXPECTED_HOURS: Final[float] = 8.0
-LOW_PCT_THRESHOLD: Final[float] = 0.60  # red-text threshold for % columns
+LOW_PCT_THRESHOLD: Final[float] = 0.60  # red‑text threshold for % columns
 
 ABSENCE_KEYWORDS: Final[set[str]] = {
     "vacation",
@@ -80,29 +80,41 @@ def process_attendance(raw: pd.DataFrame):
     """Return (summary_month, person_month, person_week, team_week)."""
     df = raw.copy()
 
-    df["Attendance date"] = pd.to_datetime(df["Attendance date"], format="%d.%m.%Y", errors="coerce")
-    df["HoursWorked"] = pd.to_numeric(df["Total time worked decimal value"], errors="coerce").fillna(0.0)
+    # ----------------------------- Normalise columns -----------------------------
+    df["Attendance date"] = pd.to_datetime(
+        df["Attendance date"], format="%d.%m.%Y", errors="coerce"
+    )
+    df["HoursWorked"] = (
+        pd.to_numeric(df["Total time worked decimal value"], errors="coerce").fillna(0.0)
+    )
     df["Present"] = df["HoursWorked"] > 0
     df["Vacation"] = df["Event"].map(is_absence)
 
+    # ----------------------------- Holiday calendar ------------------------------
     years = df["Attendance date"].dt.year.dropna().unique().astype(int)
-    hols = {d for y in years for d in holidays.country_holidays(COUNTRY_HOLIDAYS, years=[int(y)]).keys()}
+    hols = {
+        d for y in years for d in holidays.country_holidays(COUNTRY_HOLIDAYS, years=[int(y)]).keys()
+    }
 
-    # Filter weekends + holidays – they are *never* expected working days
+    # Exclude weekends / public holidays from the expected-day universe
     df = df[df["Attendance date"].dt.dayofweek < 5]
     df = df[~df["Attendance date"].dt.date.isin(hols)]
 
-    # ---------------- MONTH ----------------
+    # ----------------------------- MONTH‑LEVEL -----------------------------------
     latest = df["Attendance date"].max()
     year, month = latest.year, latest.month
     workdays_month = working_days_month(year, month, hols)
     month_label = latest.strftime("%B %Y")
 
-    df_month = df[(df["Attendance date"].dt.year == year) & (df["Attendance date"].dt.month == month)]
+    df_month = df[
+        (df["Attendance date"].dt.year == year)
+        & (df["Attendance date"].dt.month == month)
+    ]
 
     vac_days_month = (
         df_month[df_month["Vacation"]]
-        .groupby("Employee name")["Attendance date"].nunique()
+        .groupby("Employee name")["Attendance date"]
+        .nunique()
         .rename("VacationDays")
     )
 
@@ -115,12 +127,16 @@ def process_attendance(raw: pd.DataFrame):
     )
     person_month["ExpectedDays"] = workdays_month - person_month["VacationDays"]
     person_month["ExpectedHours"] = person_month["ExpectedDays"] * DAILY_EXPECTED_HOURS
+
     person_month["PctWorkingDays"] = (
-        person_month["DaysInOffice"] / person_month["ExpectedDays"].replace(0, pd.NA)
-    ).round(2)
+        person_month["DaysInOffice"]
+        / person_month["ExpectedDays"].replace(0, pd.NA)
+    ).astype("Float64").round(2)
+
     person_month["PctHours"] = (
-        person_month["ActualHours"] / person_month["ExpectedHours"].replace(0, pd.NA)
-    ).round(2)
+        person_month["ActualHours"]
+        / person_month["ExpectedHours"].replace(0, pd.NA)
+    ).astype("Float64").round(2)
 
     team_size_month = df_month["Employee name"].nunique()
     vac_pd_month = vac_days_month.sum()
@@ -131,29 +147,42 @@ def process_attendance(raw: pd.DataFrame):
             "Month": [month_label],
             "Working Days": [workdays_month],
             "Team Size": [team_size_month],
-            "Vacation Person-Days": [vac_pd_month],
-            "Team Presence %": [(df_month["Present"].sum() / exp_pd_month).round(2)],
-            "Team Hours %": [(
-                df_month["HoursWorked"].sum() / (exp_pd_month * DAILY_EXPECTED_HOURS)
-            ).round(2)],
+            "Vacation Person‑Days": [vac_pd_month],
+            "Team Presence %": [
+                (
+                    df_month["Present"].sum() / exp_pd_month if exp_pd_month else pd.NA
+                ).astype("Float64").round(2)
+            ],
+            "Team Hours %": [
+                (
+                    df_month["HoursWorked"].sum()
+                    / (exp_pd_month * DAILY_EXPECTED_HOURS)
+                    if exp_pd_month else pd.NA
+                ).astype("Float64").round(2)
+            ],
         }
     )
 
-    # ---------------- WEEK -----------------
+    # ----------------------------- WEEK‑LEVEL ------------------------------------
     df["ISOYear"] = df["Attendance date"].dt.isocalendar().year.astype(int)
     df["ISOWeek"] = df["Attendance date"].dt.isocalendar().week.astype(int)
 
     base_weeks = (
         df[["ISOYear", "ISOWeek"]]
         .drop_duplicates()
-        .assign(WorkingDays=lambda x: x.apply(lambda r: working_days_iso_week(r.ISOYear, r.ISOWeek, hols), axis=1))
+        .assign(
+            WorkingDays=lambda x: x.apply(
+                lambda r: working_days_iso_week(r.ISOYear, r.ISOWeek, hols), axis=1
+            )
+        )
         .astype({"WorkingDays": "int8"})
         .assign(ExpectedHoursWeek=lambda x: x.WorkingDays * DAILY_EXPECTED_HOURS)
     )
 
     vac_days_week = (
         df[df["Vacation"]]
-        .groupby(["ISOYear", "ISOWeek", "Employee name"])["Attendance date"].nunique()
+        .groupby(["ISOYear", "ISOWeek", "Employee name"])["Attendance date"]
+        .nunique()
         .rename("VacationDays")
     )
 
@@ -167,15 +196,17 @@ def process_attendance(raw: pd.DataFrame):
     )
     person_week["ExpectedDays"] = person_week["WorkingDays"] - person_week["VacationDays"]
     person_week["ExpectedHours"] = person_week["ExpectedDays"] * DAILY_EXPECTED_HOURS
-    person_week["Year-Week"] = (
-        person_week["ISOYear"].astype(str) + "-W" + person_week["ISOWeek"].astype(str).str.zfill(2)
+    person_week["Year‑Week"] = (
+        person_week["ISOYear"].astype(str) + "‑W" + person_week["ISOWeek"].astype(str).str.zfill(2)
     )
     person_week["PctWorkingDays"] = (
-        person_week["DaysInOffice"] / person_week["ExpectedDays"].replace(0, pd.NA)
-    ).round(2)
+        person_week["DaysInOffice"]
+        / person_week["ExpectedDays"].replace(0, pd.NA)
+    ).astype("Float64").round(2)
     person_week["PctHours"] = (
-        person_week["ActualHours"] / person_week["ExpectedHours"].replace(0, pd.NA)
-    ).round(2)
+        person_week["ActualHours"]
+        / person_week["ExpectedHours"].replace(0, pd.NA)
+    ).astype("Float64").round(2)
 
     vac_pd_week = vac_days_week.groupby(["ISOYear", "ISOWeek"]).sum().rename("VacPD")
 
@@ -190,15 +221,15 @@ def process_attendance(raw: pd.DataFrame):
     team_size_all = df["Employee name"].nunique()
     team_week["ExpectedPersonDays"] = team_week["WorkingDays"] * team_size_all - team_week["VacPD"]
     team_week["ExpectedTeamHours"] = team_week["ExpectedPersonDays"] * DAILY_EXPECTED_HOURS
-    team_week["Year-Week"] = (
-        team_week["ISOYear"].astype(str) + "-W" + team_week["ISOWeek"].astype(str).str.zfill(2)
+    team_week["Year‑Week"] = (
+        team_week["ISOYear"].astype(str) + "‑W" + team_week["ISOWeek"].astype(str).str.zfill(2)
     )
     team_week["TeamPresence%"] = (
         team_week.PersonDays / team_week.ExpectedPersonDays.replace(0, pd.NA)
-    ).round(2)
+    ).astype("Float64").round(2)
     team_week["TeamHours%"] = (
         team_week.ActualTeamHours / team_week.ExpectedTeamHours.replace(0, pd.NA)
-    ).round(2)
+    ).astype("Float64").round(2)
 
     return summary_month, person_month, person_week, team_week
 
@@ -245,10 +276,10 @@ def main():  # pragma: no cover
 
         col_month, col_week = st.columns(2)
         with col_month:
-            st.subheader("Per-Person (Month)")
+            st.subheader("Per‑Person (Month)")
             st.dataframe(style_pct(person_m, ["PctWorkingDays", "PctHours"]), use_container_width=True)
         with col_week:
-            st.subheader("Per-Person (Week)")
+            st.subheader("Per‑Person (Week)")
             st.dataframe(style_pct(person_w, ["PctWorkingDays", "PctHours"]), use_container_width=True)
 
         st.subheader("Team (Week)")
