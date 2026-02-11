@@ -33,6 +33,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 ###############################################################################
 # CONFIGURATION
 ###############################################################################
+APP_VERSION: Final[str] = "5.0"
 COUNTRY_HOLIDAYS: Final[str] = "EE"  # ISO‑3166 alpha‑2 – set yours here
 DAILY_EXPECTED_HOURS: Final[float] = 8.0
 LOW_PCT_THRESHOLD: Final[float] = 0.60  # red‑text threshold for % columns
@@ -272,6 +273,7 @@ def style_pct(df: pd.DataFrame, cols: Iterable[str]) -> pd.Styler:
 def main():  # pragma: no cover
     st.set_page_config(page_title="Attendance Analyzer", layout="wide")
     st.title("📊 Office Attendance Analyzer")
+    st.caption(f"Version {APP_VERSION}")
 
     uploaded = st.file_uploader(
         "Upload attendance report (.xlsx or .csv)",
